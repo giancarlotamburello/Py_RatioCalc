@@ -1,0 +1,4 @@
+# Py_RatioCalc
+
+Ratiocalc is a computational program suited for processing volcanic gas concentrations time series produced from any multisensor device (aka MultiGAS analyzer).
+It is primarily intended for calculating gas molar ratio (e.g. CO₂ and SO₂ ) and error respectively from the slope and the correlation coefficient of the best fit line. In addition, Ratiocalc provides an integration of satellite maps from Google® (by the Google Static Maps API) that enables an identification of the gas sources and/or topographic elements. Finally, Ratiocalc makes available user-friendly tools for detrending signals, by interpolating 5-10 hand-positioned points with a spline, removing the interferences or cross-sensitivities to the gas measurement and calibrating each sensor for an amplitude-to-concentration signal conversion.
