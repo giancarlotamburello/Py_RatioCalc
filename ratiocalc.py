@@ -92,12 +92,16 @@ class RatioCalcApp:
         # Create a Results menu
         self.results_menu = tk.Menu(self.menu_bar, tearoff=0)  
         self.results_menu.add_command(label="Loaded data",command=self.show_raw_data_table)
-        self.results_menu.add_command(label="Results",command=self.show_fit_parameters_table)
+        self.results_menu.add_command(label="Manual results",command=self.show_fit_parameters_table)
+        self.results_menu.add_command(label="Processing results ",command=self.show_proc_results_table)
         self.menu_bar.add_cascade(label="Tables", menu=self.results_menu)
 
         # Create a Selection menu
         self.selection_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Selection", menu=self.selection_menu)
+
+        #  Col names
+        self.col_names = ""
 
         #  Numerator
         self.y2_var = tk.StringVar()
@@ -134,6 +138,14 @@ class RatioCalcApp:
         self.plot_menu.add_command(label="Scatter and time-series",command=self.generate_dual_y_plot)
         self.plot_menu.add_command(label="Coordinates",command=self.generate_lonlat_plot)
         self.menu_bar.add_cascade(label="Plot", menu=self.plot_menu)
+
+        # Create a Processing menu 
+        self.proc_menu = tk.Menu(self.menu_bar, tearoff=0)  
+        self.proc_menu.add_command(label="Parameters",command=self.open_settings_window)
+        self.proc_menu.add_separator()  # Add separator
+        self.proc_menu.add_command(label="Current dataset",command=self.ratio_proc)
+        self.proc_menu.add_command(label="Multiple dataset",command=self.show_fit_parameters_table)
+        self.menu_bar.add_cascade(label="Processing", menu=self.proc_menu)
 
         # Add the menu bar to the window
         self.root.config(menu=self.menu_bar)
@@ -223,7 +235,7 @@ class RatioCalcApp:
             self.file_dropdown.current(0)
             self.dropdown_changed(None)
 
-            messagebox.showinfo("Info", f"Data split into {len(self.split_datasets)} segments.")
+            messagebox.showinfo("Message", f"Data split into {len(self.split_datasets)} segments.")
             
         except Exception as e:
             #messagebox.showerror("Error", f"Failed to load data: {e}")
@@ -249,6 +261,13 @@ class RatioCalcApp:
 
         if plt.fignum_exists(1):
             xlim = [self.click_start[0],self.click_end[0]]
+
+            if xlim[1] > self.fc.size:
+                xlim[1] = self.fc.size - 1
+            
+            if xlim[0] > self.fc.size:
+                xlim[0] = self.fc.size - 10
+
             self.simulate_click_event(xlim[0],xlim[1])
             self.fig_dual.canvas.draw_idle()
             self.generate_dual_y_plot()
@@ -307,11 +326,17 @@ class RatioCalcApp:
     def update_column_menus(self):
         columns = list(self.df.columns)
 
+        if columns == self.col_names:
+            return
+        else:
+            self.col_names = columns
+
         # Update y menu selection   
         self.numerator_menu.delete(0, 'end')
         self.numerator_menu.invoke(0)
         self.y2_var.set(columns[0])
         new_options = columns
+
         for option in new_options:
             self.numerator_menu.add_radiobutton(label=option, variable=self.y2_var,command=self.menu_click)
              
@@ -359,10 +384,17 @@ class RatioCalcApp:
         y1 = self.y1_var.get()
         y2 = self.y2_var.get()
 
-        self.info_data.config(text=f" Num.:\t{y2} \n Den.:\t{y1} \n Marker:\t{self.mark_var.get()} \n Lon:\t{self.lon_var.get()} \n Lat:\t{self.lat_var.get()}")
+        self.info_data.config(text=f"Num.:\t{y2} \n\n"
+                              f"Den.:\t{y1} \n\n"
+                              f"Marker:\t{self.mark_var.get()} \n\n"
+                              f"Lon:\t{self.lon_var.get()} \n\n"
+                              f"Lat:\t{self.lat_var.get()}")
 
         try:
             xlim = [self.click_start[0],self.click_end[0]]
+
+            if xlim[0] > xlim[1]:
+                xlim = xlim[::-1]
 
             if self.do_shift.get():
                 best_shift = self.best_correlation(np.array(self.df.iloc[:][y1]),np.array(self.df.iloc[:][y2]), np.int32(xlim[0]),np.int32(xlim[1]))
@@ -378,31 +410,38 @@ class RatioCalcApp:
             filtered_fc = self.fc.iloc[(self.fc.index >= xlim[0]) & (self.fc.index <= xlim[1])] # First column
         except:
             xlim = [0,10]
+            self.click_start = (0,0)
+            self.click_end = (10,0)
             filtered_num = np.array(self.df[y2])
             filtered_den = np.array(self.df[y1])
             filtered_fc = self.fc # First column
 
-        if xlim[0] > xlim[1]:
-            xlim = xlim[::-1]
-
         if plt.fignum_exists(3):
             self.generate_lonlat_plot(update=True)
 
-        plt.figure(num=2, figsize=(6,7))
+        plt.figure(num=2, figsize=(10,4)) #figsize=(6,7)
         plt.clf()  # Clear the figure to avoid overlapping plots
         mngr = plt.get_current_fig_manager()
 
         # Create a figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(2, 1,num=2)
+        fig, (ax1, ax2) = plt.subplots(1, 2,num=2)
 
 
         # First plot: Scatter plot of X1 vs X2
         ax1.scatter(filtered_den, filtered_num, color='blue')
         ax1.set_xlabel(y1)
         ax1.set_ylabel(y2)
-        ax1.set_title(f"{filtered_fc.iloc[0]} - {filtered_fc.iloc[-1]}")
+        #ax1.set_title(f"{filtered_fc.iloc[0]} - {filtered_fc.iloc[-1]}")
 
-        slope, intercept, r_value, p_value, std_err = stats.linregress(filtered_den, filtered_num)
+        try:
+            slope, intercept, r_value, p_value, std_err = stats.linregress(filtered_den, filtered_num)
+        except:
+            slope = np.NaN
+            intercept = np.NaN
+            r_value = np.NaN
+            p_value = np.NaN
+            std_err = np.NaN
+
         fit = [slope,intercept]
         r_squared = r_value**2
 
@@ -411,17 +450,17 @@ class RatioCalcApp:
         ci = 1.959964*std_err
 
         # Create equation text
-        equation_text = f"y = {fit[0]:.2f} x (±{ci:.2f}) + {fit[1]:.2f}\nR² = {r_squared:.2f}"
-        ax1.text(0.05, 0.95, equation_text, transform=ax1.transAxes,
-                             fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', edgecolor='black', facecolor='lightgray'))
+        #equation_text = f"y = {fit[0]:.2f} x (±{ci:.2f}) + {fit[1]:.2f}\nR² = {r_squared:.2f}"
+        #ax1.text(0.05, 0.95, equation_text, transform=ax1.transAxes,
+        #                     fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', edgecolor='black', facecolor='lightgray'))
 
         self.info_fit.config(text=(
-            f"{filtered_fc.iloc[0]} - {filtered_fc.iloc[-1]}\n"
-            f"Num. samples = {len(filtered_num)}\n"
-            f"{y2} = {fit[0]:.2f} {y1} (±{ci:.2f}) + {fit[1]:.2f}\n"
-            f"R² = {r_squared:.2f}\n"
-            f"Max {y2} = {filtered_num.max():.2f}\n"
-            f"Max {y1} = {filtered_den.max():.2f}\n"
+            f"{filtered_fc.iloc[0]} - {filtered_fc.iloc[-1]}\n\n"
+            f"Num. samples = {len(filtered_num)}\n\n"
+            f"{y2} = {fit[0]:.2f} {y1} (±{ci:.2f}) + {fit[1]:.2f}\n\n"
+            f"R² = {r_squared:.2f}\n\n"
+            f"Max {y2} = {filtered_num.max():.2f}\n\n"
+            f"Max {y1} = {filtered_den.max():.2f}\n\n"
             f"Shift = {self.shift_value}"
         ))
 
@@ -478,6 +517,9 @@ class RatioCalcApp:
             xlim = [self.click_start[0],self.click_end[0]]
         except:
             xlim = [0,10]
+            self.click_start = (0,0)
+            self.click_end = (10,0)
+            
             
         if xlim[0] > xlim[1]:
             xlim = xlim[::-1]
@@ -525,6 +567,16 @@ class RatioCalcApp:
         elif event.key == 'shift+down':
             delta1 = 10
             delta2 = -10
+        elif event.key == 'pageup':
+            if self.file_dropdown.current() != 0:
+                self.file_dropdown.current(self.file_dropdown.current() - 1)
+                self.dropdown_changed(None)
+            return
+        elif event.key == 'pagedown':
+            if self.file_dropdown.current() < (len(self.file_dropdown.cget("values")) -1):
+                self.file_dropdown.current(self.file_dropdown.current() + 1)
+                self.dropdown_changed(None)        
+            return
         else:
             return
 
@@ -539,16 +591,28 @@ class RatioCalcApp:
             return
 
         if event_click.button == 1:
-            # Write to figure
-            self.click_start = (event_click.xdata, event_click.ydata)
-            self.line_start.set_xdata(self.click_start[0])
+            if event_click.xdata > self.click_end[0]:
+                self.click_start = (self.click_end[0],event_click.ydata)
+                self.click_end = (event_click.xdata,0)
+            else:
+                self.click_start = (event_click.xdata, event_click.ydata)
+            
+            self.line_start.set_xdata([self.click_start[0]])
+            self.line_end.set_xdata([self.click_end[0]])
             self.generate_scatter_plot()
         
 
         elif event_click.button == 3:
-            # Write to figure
-            self.click_end = (event_click.xdata, event_click.ydata)
-            self.line_end.set_xdata(self.click_end[0])
+
+
+            if event_click.xdata < self.click_start[0]:
+                self.click_end = (self.click_start[0],event_click.ydata)
+                self.click_start = (event_click.xdata,0)
+            else:
+                self.click_end = (event_click.xdata, event_click.ydata)
+
+            self.line_start.set_xdata([self.click_start[0]])
+            self.line_end.set_xdata([self.click_end[0]])
             self.generate_scatter_plot()
 
 
@@ -594,8 +658,9 @@ class RatioCalcApp:
 
         ax = plt.gca()  # Get the current axes
         scatter = ax.scatter(self.df[:][lon], self.df[:][lat], c='gray', s=15)
-        ax.scatter(filtered_df[lon].reindex(mark_index), filtered_df[lat].reindex(mark_index),c=filtered_df[marker].reindex(mark_index),
-                   vmin=np.array(filtered_df[marker]).min(), vmax=np.array(filtered_df[marker]).max(), cmap='viridis')
+        ax.scatter(filtered_df[lon].reindex(mark_index), filtered_df[lat].reindex(mark_index), c=filtered_df[marker].reindex(mark_index),
+               vmin=np.array(filtered_df[marker]).min(), vmax=np.array(filtered_df[marker]).max(), cmap='viridis')
+        ax.set_aspect('equal', 'box')
 
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
@@ -716,6 +781,33 @@ class RatioCalcApp:
         else:
             self.dTDaPT.updateModel(pt.TableModel(results_df))
             self.dTDaPT.redraw()
+    
+    def show_proc_results_table(self):
+
+        if not hasattr(self, 'proc_results'):
+            return
+
+        results_df = self.proc_results
+        results_df.columns = ["Index","Time", "Ratio", "∆ den.", "∆ num.","Max den.","Max num.","Max marker","R²","Shift","Longitude","Latitude","Num. samples"]
+
+        table_was_closed = False
+
+        if not hasattr(self, 'table_window') or not self.table_window.winfo_exists():
+            self.table_window = tk.Toplevel(self.root)
+            self.table_window.withdraw()  # Hide the window initially
+            self.table_window.title("Processing results")
+            self.table_frame = tk.Frame(self.table_window)
+            self.table_frame.pack(fill=tk.BOTH, expand=True)
+            table_was_closed = True
+        
+        self.table_window.deiconify()  # Show the window
+
+        if table_was_closed:
+            self.dTDaPT3 = pt.Table(self.table_frame, dataframe=results_df,showstatusbar=True )
+            self.dTDaPT3.show()
+        else:
+            self.dTDaPT3.updateModel(pt.TableModel(results_df))
+            self.dTDaPT3.redraw()
           
     def best_correlation(self, X1, X2, start_idx, end_idx):
         X1 = np.array(X1)
@@ -744,6 +836,183 @@ class RatioCalcApp:
                     best_shift = shift
 
         return best_shift
+    
+    def open_settings_window(self):
+        settings_file = "settings.npy"
+        if os.path.exists(settings_file):
+            settings = np.load(settings_file, allow_pickle=True).item()
+        else:
+            settings = {
+                "mrk_lim": 10,
+                "cor_lim": 0.7,
+                "win_width": 120,
+                "max_shift": 5,
+                "num_ratios": 0
+            }
+
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Settings")
+
+        labels = ["Marker Limit", "Correlation Limit", "Window Width", "Max Shift"]
+        keys = ["mrk_lim", "cor_lim", "win_width", "max_shift"]
+        entries = {}
+
+        for i, label in enumerate(labels):
+            tk.Label(settings_window, text=label).grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
+            entry = tk.Entry(settings_window)
+            entry.grid(row=i, column=1, padx=10, pady=5)
+            entry.insert(0, str(settings[keys[i]]))
+            entry.config(width=10)
+            entries[keys[i]] = entry
+
+        def save_settings():
+            for key in keys:
+                settings[key] = type(settings[key])(entries[key].get())
+            np.save(settings_file, settings)
+            settings_window.destroy()
+
+        save_button = tk.Button(settings_window, text="Save", command=save_settings)
+        save_button.grid(row=len(labels), column=0, columnspan=2, pady=10)
+
+    def ratio_proc(self):
+        if self.df is None:
+            messagebox.showerror("Error", "No data loaded.")
+            return
+
+        df1=self.df
+
+        settings_file = "settings.npy"
+        if not os.path.exists(settings_file):
+            settings = {
+                "mrk_lim": 10,
+                "cor_lim": 0.7,
+                "win_width": 120,
+                "max_shift": 5,
+                "num_ratios": 0
+            }
+            np.save(settings_file, settings)
+        else:
+            settings = np.load(settings_file, allow_pickle=True).item()
+
+        num = self.df.columns.get_loc(self.y2_var.get())
+        den = self.df.columns.get_loc(self.y1_var.get())
+        mrk = self.df.columns.get_loc(self.mark_var.get())
+        lat = self.df.columns.get_loc(self.lat_var.get())
+        lon = self.df.columns.get_loc(self.lon_var.get())
+        lat_sel = self.lat_var.get()
+        lon_sel = self.lon_var.get()
+
+        if self.lat_var.get() == self.lon_var.get():
+            lat, lon = np.NAN, np.NAN
+            lat_sel, lon_sel = "-", "-"
+
+        mrk_lim = settings["mrk_lim"]
+        cor_lim = settings["cor_lim"]
+        win_width = settings["win_width"]
+        max_shift = settings["max_shift"]
+        num_ratios = settings["num_ratios"]
+        
+        df1 = df1.dropna(subset=[df1.columns[num], df1.columns[den], df1.columns[mrk]])
+
+        if df1[df1.columns[mrk]].max(skipna=True) < mrk_lim:
+            return None
+        
+        if len(df1) <= (win_width + 1):
+            return None
+
+        results = []
+
+        settings_text = (
+            f"Numerator: {self.y2_var.get()}\n"
+            f"Denominator: {self.y1_var.get()}\n"
+            f"Latitude: {lat_sel}\n"
+            f"Longitude: {lon_sel}\n"
+            f"Marker: {self.mark_var.get()}\n"
+            f"Marker Limit: {mrk_lim}\n"
+            f"Correlation Limit: {cor_lim}\n"
+            f"Window Width: {win_width}\n"
+            f"Max Shift: {max_shift}\n"
+        )
+        
+
+        progress = tk.Toplevel(self.root)
+        progress.title("Processing")
+        progress.geometry("300x300")
+        progress_label = tk.Label(progress, text=f"Processing data, please wait...\n\n{settings_text}",justify=tk.LEFT)
+        progress_label.pack(pady=10)
+        progress_bar = tk.ttk.Progressbar(progress, orient="horizontal", length=200, mode="determinate")
+        progress_bar.pack(pady=10)
+        progress_bar["maximum"] = len(df1) - 1 - max_shift - win_width
+        
+
+        for ii in range(1 + max_shift, len(df1) - 1 - max_shift - win_width):
+
+            progress_bar["value"] = ii
+            progress.update_idletasks()
+
+            
+            if df1[df1.columns[mrk]].max(skipna=True) < mrk_lim:
+                continue
+
+            # Calculate cross-correlation
+            cor2 = []
+            for jj in range(-max_shift, max_shift + 1):
+                segment_den = df1.iloc[ii + jj:ii + win_width + jj][df1.columns[den]]
+                segment_num = df1.iloc[ii:ii + win_width][df1.columns[num]]
+                correlation, _ = pearsonr(segment_den, segment_num)  # Get correlation
+                cor2.append(correlation)
+
+            ccf1 = np.argmax(cor2) - max_shift
+            
+            cor1, _ = pearsonr(df1.iloc[ii + ccf1:ii + win_width + ccf1][df1.columns[den]], 
+                            df1.iloc[ii:ii + win_width][df1.columns[num]])
+
+            if pd.isna(cor1):
+                continue
+
+            if cor1 >= cor_lim:
+                # Perform linear regression using stats.linregress
+                X = df1.iloc[ii + ccf1:ii + win_width + ccf1][df1.columns[den]]
+                y = df1.iloc[ii:ii + win_width][df1.columns[num]]
+
+                slope, intercept, r_value, p_value, std_err = stats.linregress(X, y)
+                ratio = slope
+                
+                dDen = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[den]].max() - df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[den]].min()
+                dNum = df1.iloc[ii:ii + win_width][df1.columns[num]].max() - df1.iloc[ii:ii + win_width][df1.columns[num]].min()
+                maxDen = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[den]].max()
+                maxNum = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[num]].max()
+                maxMrk = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[mrk]].max()
+
+                if self.lat_var.get() == self.lon_var.get():
+                    lat_mean, lon_mean = np.NAN, np.NAN
+                else:
+                    lat_mean = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[lat]].mean()
+                    lon_mean = df1.iloc[ii + ccf1 - 1:ii + win_width + ccf1 - 1][df1.columns[lon]].mean()
+
+                result = {
+                    'index': ii,
+                    'time': self.fc.iloc[ii],
+                    'ratio': ratio,
+                    'dDen': dDen,
+                    'dNum': dNum,
+                    'maxDen': maxDen,
+                    'maxNum': maxNum,
+                    'maxMrk': maxMrk,
+                    'cor': cor1**2,
+                    'shift': ccf1,
+                    "latMean": lat_mean,
+                    "lonMean": lon_mean,
+                    'numSamples' : win_width
+                }
+                results.append(result)
+                num_ratios += 1
+
+        progress.destroy()
+
+        
+        results = pd.DataFrame(results)
+        self.proc_results = results.copy()
 
 
 if __name__ == "__main__":
