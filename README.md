@@ -4,6 +4,8 @@ Ratiocalc is a computational program suited for processing volcanic gas concentr
 It is primarily intended for calculating gas molar ratio (e.g. CO₂ and SO₂ ) and error respectively from the slope and the correlation coefficient of the best fit line.
 This Python-based RatioCalc version creates a graphical user interface for analyzing data, particularly for calculating and visualizing ratios between two selected variables.
 
+![alt text](https://github.com/giancarlotamburello/Py_RatioCalc/blob/7ae73c50e9d0fbae6fce070b7ee8b35f0758b1b9/Py_ratiocalc.png)
+
 ## Key Functions
 
 ### GUI Creation:
