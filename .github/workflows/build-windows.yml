@@ -31,6 +31,7 @@ jobs:
           --copy-metadata scipy
           --copy-metadata matplotlib
           --copy-metadata PySide6
+          --copy-metadata pyproj
           ratiocalc.py
 
       - name: Upload Windows application
