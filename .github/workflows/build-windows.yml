@@ -31,7 +31,8 @@ jobs:
           --copy-metadata scipy
           --copy-metadata matplotlib
           --copy-metadata PySide6
-          ratiocalc_qt.py
+          --copy-metadata pyproj
+          ratiocalc.py
 
       - name: Upload Windows application
         uses: actions/upload-artifact@v7
