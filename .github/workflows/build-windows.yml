@@ -1,0 +1,41 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build RatioCalc
+        run: >
+          python -m PyInstaller
+          --noconfirm --clean
+          --windowed --onedir --name RatioCalc
+          --copy-metadata numpy
+          --copy-metadata pandas
+          --copy-metadata scipy
+          --copy-metadata matplotlib
+          --copy-metadata PySide6
+          ratiocalc_qt.py
+
+      - name: Upload Windows application
+        uses: actions/upload-artifact@v7
+        with:
+          name: RatioCalc-Windows
+          path: dist/RatioCalc/
+          if-no-files-found: error
